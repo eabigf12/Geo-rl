@@ -1,0 +1,1 @@
+{"format":"tflite","inputShape":[1,224,224,3],"outputShape":[1,9],"numClasses":9}

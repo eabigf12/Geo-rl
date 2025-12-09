@@ -1,0 +1,9 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "tensorflow>=2.20.0",
+    "tensorflowjs>=3.18.0",
+]

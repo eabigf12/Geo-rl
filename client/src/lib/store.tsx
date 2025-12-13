@@ -42,62 +42,6 @@ const INITIAL_POSTS: Post[] = [
       ],
     },
   },
-  {
-    id: "3",
-    imageUrl: capadociaImg,
-    user: {
-      username: "travel_turkey",
-      avatarUrl: "https://github.com/shadcn.png",
-    },
-    location: "Kapadokya, Nevşehir",
-    likes: 3421,
-    isLiked: false,
-    description: "Peri bacaları ve balonlar... Büyüleyici! 🎈",
-    timestamp: "1 gün önce",
-    aiResult: {
-      name: "Sıcak Hava Balonu",
-      type: "Aktivite",
-      confidence: 0.95,
-      facts: [
-        "Kapadokya, dünyadaki en iyi balon turu rotalarından biridir.",
-        "Her sabah gün doğumunda yüzlerce balon havalanır.",
-        "Peri bacaları volkanik tüflerden oluşmuştur.",
-      ],
-      classes: [
-        { name: "Balon", percentage: 95 },
-        { name: "Manzara", percentage: 92 },
-        { name: "Gökyüzü", percentage: 88 },
-      ],
-    },
-  },
-  {
-    id: "4",
-    imageUrl: catImg,
-    user: {
-      username: "kedili_sokak",
-      avatarUrl: "https://github.com/shadcn.png",
-    },
-    location: "Kadıköy, İstanbul",
-    likes: 567,
-    isLiked: true,
-    description: "İstanbul'un gerçek sahipleri. 🐱",
-    timestamp: "3 saat önce",
-    aiResult: {
-      name: "Kedi",
-      type: "Hayvan",
-      confidence: 0.99,
-      facts: [
-        "İstanbul, sokak kedileriyle ünlüdür.",
-        "Kediler 30 farklı ses çıkarabilir.",
-        "Antik Mısır'da kutsal sayılırlardı.",
-      ],
-      classes: [
-        { name: "Kedi", percentage: 99 },
-        { name: "Memeli", percentage: 95 },
-        { name: "Sevimli", percentage: 100 },
-      ],
-    },
-  },
 ];
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({

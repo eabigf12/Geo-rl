@@ -1,9 +1,8 @@
 import React from "react";
 import { useApp } from "@/lib/store";
 import { useAuth } from "@/App";
-import { auth, storage } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { signOut, updateProfile } from "firebase/auth";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import BottomNav from "@/components/BottomNav";
@@ -27,12 +26,11 @@ export default function Profile() {
   const [activeTab, setActiveTab] = React.useState<"posts" | "saved">("saved");
   const [isEditing, setIsEditing] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
-  const [uploadingImage, setUploadingImage] = React.useState(false);
   const [editForm, setEditForm] = React.useState({
     name: user?.displayName || "",
     bio: currentUser?.bio || "",
     avatar:
-      user?.photoURL || currentUser?.avatar || "https://github.com/shadcn.png",
+      currentUser?.avatar || user?.photoURL || "https://github.com/shadcn.png",
   });
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -42,8 +40,8 @@ export default function Profile() {
       name: user?.displayName || currentUser?.name || "",
       bio: currentUser?.bio || "",
       avatar:
-        user?.photoURL ||
         currentUser?.avatar ||
+        user?.photoURL ||
         "https://github.com/shadcn.png",
     });
   }, [user, currentUser]);
@@ -69,9 +67,9 @@ export default function Profile() {
 
   const myPostsCount = posts.filter((p) => p.user.username === username).length;
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file) return;
 
     // Check file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
@@ -93,49 +91,36 @@ export default function Profile() {
       return;
     }
 
-    setUploadingImage(true);
-
-    try {
-      // Create a unique filename
-      const filename = `avatars/${user.uid}/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, filename);
-
-      // Upload the file
-      await uploadBytes(storageRef, file);
-
-      // Get the download URL
-      const downloadURL = await getDownloadURL(storageRef);
-
-      // Update the form with new avatar URL
-      setEditForm((prev) => ({ ...prev, avatar: downloadURL }));
-
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setEditForm((prev) => ({ ...prev, avatar: reader.result as string }));
       toast({
         title: "Başarılı",
-        description: "Profil resmi yüklendi.",
+        description: "Profil resmi yüklendi. Kaydetmeyi unutmayın!",
       });
-    } catch (error: any) {
-      console.error("Upload error:", error);
+    };
+    reader.onerror = () => {
       toast({
         title: "Hata",
         description: "Resim yüklenirken bir hata oluştu.",
         variant: "destructive",
       });
-    } finally {
-      setUploadingImage(false);
-    }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveProfile = async () => {
     try {
-      // Update Firebase profile
+      // Update Firebase profile (only display name, skip photoURL for base64)
       if (user) {
         await updateProfile(user, {
           displayName: editForm.name,
-          photoURL: editForm.avatar,
+          // Don't update photoURL with base64 - it's too large for Firebase Auth
         });
       }
 
-      // Update local app state
+      // Update local app state (includes avatar)
       updateUserProfile(editForm);
 
       toast({
@@ -145,9 +130,10 @@ export default function Profile() {
 
       setIsEditing(false);
     } catch (error: any) {
+      console.error("Profile update error:", error);
       toast({
         title: "Hata",
-        description: "Profil güncellenirken bir hata oluştu.",
+        description: error.message || "Profil güncellenirken bir hata oluştu.",
         variant: "destructive",
       });
     }
@@ -158,8 +144,8 @@ export default function Profile() {
       name: user?.displayName || currentUser?.name || "",
       bio: currentUser?.bio || "",
       avatar:
-        user?.photoURL ||
         currentUser?.avatar ||
+        user?.photoURL ||
         "https://github.com/shadcn.png",
     });
     setIsEditing(false);
@@ -228,7 +214,9 @@ export default function Profile() {
             <div className="w-20 h-20 rounded-full bg-muted border border-border p-1">
               <img
                 src={
-                  isEditing ? editForm.avatar : user.photoURL || editForm.avatar
+                  isEditing
+                    ? editForm.avatar
+                    : currentUser?.avatar || user?.photoURL || editForm.avatar
                 }
                 alt="Profile"
                 className="w-full h-full rounded-full object-cover"
@@ -238,14 +226,9 @@ export default function Profile() {
               <>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingImage}
                   className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white"
                 >
-                  {uploadingImage ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  ) : (
-                    <Camera size={20} />
-                  )}
+                  <Camera size={20} />
                 </button>
                 <input
                   ref={fileInputRef}
@@ -253,7 +236,6 @@ export default function Profile() {
                   accept="image/*"
                   onChange={handleAvatarChange}
                   className="hidden"
-                  disabled={uploadingImage}
                 />
               </>
             )}

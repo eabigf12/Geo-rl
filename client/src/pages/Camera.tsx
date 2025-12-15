@@ -1,334 +1,380 @@
-import React, { useRef, useState, useEffect } from "react";
-import { useLocation } from "wouter";
-import {
-  Camera as CameraIcon,
-  X,
-  Zap,
-  RotateCcw,
-  Image as ImageIcon,
-  Check,
-} from "lucide-react";
-import { IdentificationResult } from "@/lib/mockData";
-import { identifyImage, loadModel } from "@/lib/aiModel";
+import React from "react";
 import { useApp } from "@/lib/store";
-import { Button } from "@/components/ui/button";
+import { useAuth } from "@/App";
+import { auth } from "@/lib/firebase";
+import { signOut, updateProfile } from "firebase/auth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import BottomNav from "@/components/BottomNav";
+import {
+  Settings,
+  Grid,
+  Bookmark,
+  Camera,
+  X,
+  Check,
+  LogOut,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export default function Camera() {
+export default function Profile() {
+  const { posts, savedPosts, isSaved, currentUser, updateUserProfile } =
+    useApp();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<IdentificationResult | null>(null);
-  const [modelLoading, setModelLoading] = useState(true);
-  const { addPost } = useApp();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = React.useState<"posts" | "saved">("saved");
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [showSettings, setShowSettings] = React.useState(false);
+  const [editForm, setEditForm] = React.useState({
+    name: user?.displayName || "",
+    bio: currentUser?.bio || "",
+    avatar: currentUser?.avatar || user?.photoURL || "",
+  });
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    // Load AI model on mount
-    loadModel()
-      .then(() => {
-        setModelLoading(false);
-        toast({
-          title: "AI Hazır",
-          description: "Model yüklendi, tanıma başlayabilir! 🎯",
-        });
-      })
-      .catch((error) => {
-        setModelLoading(false);
-        console.error("Model loading failed:", error);
-        toast({
-          variant: "destructive",
-          title: "Model Hatası",
-          description: "AI modeli yüklenemedi. Mock veri kullanılacak.",
-        });
-      });
+  // Update form when user or currentUser changes
+  React.useEffect(() => {
+    setEditForm({
+      name: user?.displayName || currentUser?.name || "",
+      bio: currentUser?.bio || "",
+      avatar: currentUser?.avatar || user?.photoURL || "",
+    });
+  }, [user, currentUser]);
 
-    startCamera();
-    return () => stopCamera();
-  }, []);
+  // Safety check
+  if (!user) {
+    return (
+      <div className="bg-background min-h-screen pb-20 flex items-center justify-center">
+        <p className="text-muted-foreground">Profil yükleniyor...</p>
+      </div>
+    );
+  }
 
-  const startCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { ideal: 4096 }, // High resolution width
-          height: { ideal: 2160 }, // High resolution height
-          aspectRatio: 9 / 16,
-          frameRate: { ideal: 30 }, // Smooth 30fps
-          // Advanced settings for better quality
-          focusMode: "continuous",
-          exposureMode: "continuous",
-          whiteBalanceMode: "continuous",
-        },
-      });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
-      console.error("Camera error:", err);
+  // Extract username from email (remove @geosnap.app)
+  const username = user.email?.split("@")[0] || "kullanici";
+  const displayName = user.displayName || currentUser?.name || username;
+
+  // Filter posts based on tab
+  const displayPosts =
+    activeTab === "posts"
+      ? posts.filter((p) => p.user.username === username)
+      : posts.filter((p) => isSaved(p.id));
+
+  const myPostsCount = posts.filter((p) => p.user.username === username).length;
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
       toast({
+        title: "Hata",
+        description: "Dosya boyutu 5MB'dan küçük olmalı.",
         variant: "destructive",
-        title: "Kamera Hatası",
-        description: "Kameraya erişilemedi. Lütfen izinleri kontrol edin.",
       });
+      return;
     }
-  };
 
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-  };
-
-  const takePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-
-      // Use actual video dimensions for full quality
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        // Enable image smoothing for better quality
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-
-        ctx.drawImage(video, 0, 0);
-
-        // Use PNG for lossless quality (larger file size)
-        // Or increase JPEG quality to 0.95 (1.0 = max quality)
-        const imageUrl = canvas.toDataURL("image/jpeg", 0.95);
-
-        setCapturedImage(imageUrl);
-        analyzeImage(imageUrl);
-      }
-    }
-  };
-
-  const analyzeImage = async (imageUrl: string) => {
-    setIsAnalyzing(true);
-    try {
-      // Use real AI model for inference
-      const res = await identifyImage(imageUrl);
-      setResult(res);
-    } catch (error) {
-      console.error("AI inference error:", error);
+    // Check file type
+    if (!file.type.startsWith("image/")) {
       toast({
+        title: "Hata",
+        description: "Lütfen bir resim dosyası seçin.",
         variant: "destructive",
-        title: "Analiz Hatası",
-        description: "Görüntü analiz edilemedi. Tekrar deneyin.",
       });
-      // Fallback to mock for demo
-      setResult({
-        name: "Tespit Edilemedi",
-        type: "Bilinmeyen",
-        confidence: 0.3,
-        facts: ["Daha net bir fotoğraf çekmeyi deneyin."],
-        classes: [{ name: "Bilinmeyen", percentage: 30 }],
-      });
-    } finally {
-      setIsAnalyzing(false);
+      return;
     }
-  };
 
-  const savePost = () => {
-    if (capturedImage && result) {
-      addPost({
-        id: Date.now().toString(),
-        imageUrl: capturedImage,
-        user: {
-          username: "ben",
-          avatarUrl: "https://github.com/shadcn.png",
-        },
-        location: result.location || "Bilinmeyen Konum",
-        likes: 0,
-        isLiked: false,
-        description: `Keşfedildi: ${result.name} ✨`,
-        timestamp: "Şimdi",
-        aiResult: result,
-      });
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setEditForm((prev) => ({ ...prev, avatar: reader.result as string }));
       toast({
-        title: "Paylaşıldı!",
-        description: "Keşfiniz başarıyla paylaşıldı.",
+        title: "Başarılı",
+        description: "Profil resmi yüklendi. Kaydetmeyi unutmayın!",
       });
-      setLocation("/");
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Hata",
+        description: "Resim yüklenirken bir hata oluştu.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      // Update Firebase profile (only display name, skip photoURL for base64)
+      if (user) {
+        await updateProfile(user, {
+          displayName: editForm.name,
+          // Don't update photoURL with base64 - it's too large for Firebase Auth
+        });
+      }
+
+      // Update local app state (includes avatar)
+      updateUserProfile(editForm);
+
+      toast({
+        title: "Profil güncellendi",
+        description: "Değişiklikleriniz kaydedildi.",
+      });
+
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      toast({
+        title: "Hata",
+        description: error.message || "Profil güncellenirken bir hata oluştu.",
+        variant: "destructive",
+      });
     }
   };
 
-  const reset = () => {
-    setCapturedImage(null);
-    setResult(null);
+  const handleCancelEdit = () => {
+    setEditForm({
+      name: user?.displayName || currentUser?.name || "",
+      bio: currentUser?.bio || "",
+      avatar: currentUser?.avatar || user?.photoURL || "",
+    });
+    setIsEditing(false);
   };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast({
+        title: "Çıkış yapıldı",
+        description: "Başarıyla çıkış yaptınız.",
+      });
+      setLocation("/auth");
+    } catch (error: any) {
+      toast({
+        title: "Hata",
+        description: "Çıkış yapılırken bir hata oluştu.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Get current avatar URL
+  const currentAvatarUrl = isEditing
+    ? editForm.avatar
+    : currentUser?.avatar || user?.photoURL || "";
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+    <div className="bg-background min-h-screen pb-20">
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10">
-        <button
-          onClick={() => setLocation("/")}
-          className="text-white p-2"
-          data-testid="button-close-camera"
-        >
-          <X size={28} />
-        </button>
-        <span className="text-white font-medium">AI Tarayıcı</span>
-        <button className="text-white p-2">
-          <Zap
-            size={24}
-            className={isAnalyzing || modelLoading ? "animate-pulse" : ""}
-          />
-        </button>
-      </div>
+      <header className="sticky top-0 z-40 bg-background border-b border-border px-4 h-14 flex items-center justify-between">
+        <h1 className="font-bold text-lg">{username}</h1>
+        <div className="flex items-center gap-4">
+          {isEditing ? (
+            <>
+              <button
+                onClick={handleCancelEdit}
+                className="text-muted-foreground"
+              >
+                <X size={24} />
+              </button>
+              <button onClick={handleSaveProfile} className="text-blue-500">
+                <Check size={24} />
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setShowSettings(!showSettings)}>
+              <Settings size={24} />
+            </button>
+          )}
+        </div>
+      </header>
 
-      {/* Main View */}
-      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
-        {!capturedImage ? (
-          <>
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            {modelLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                <div className="text-center">
-                  <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-white font-medium">
-                    AI Model Yükleniyor...
-                  </p>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="relative w-full h-full">
-            <img
-              src={capturedImage}
-              alt="Captured"
-              className="w-full h-full object-cover"
-            />
-
-            {/* Analysis Overlay */}
-            {isAnalyzing && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
-                <div className="w-20 h-20 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-white font-medium animate-pulse">
-                  AI Analiz Ediyor...
-                </p>
-                <p className="text-white/70 text-sm mt-2">
-                  TensorFlow.js ile gerçek zamanlı tanıma
-                </p>
-              </div>
-            )}
-
-            {/* Result Overlay */}
-            {!isAnalyzing && result && (
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-6 pt-20">
-                <div className="bg-card text-card-foreground p-5 rounded-2xl shadow-xl animate-in slide-in-from-bottom-10 duration-500">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h2
-                        className="text-2xl font-bold"
-                        data-testid="text-result-name"
-                      >
-                        {result.name}
-                      </h2>
-                      <p className="text-muted-foreground">
-                        {result.type} • %{Math.round(result.confidence * 100)}{" "}
-                        Güven
-                      </p>
-                    </div>
-                    <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                      AI
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mt-4 mb-4">
-                    {result.classes.slice(0, 2).map((cls, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 text-sm"
-                        data-testid={`class-${i}`}
-                      >
-                        <span className="text-xs w-20 truncate">
-                          {cls.name}
-                        </span>
-                        <div className="flex-1 bg-secondary h-2 rounded-full overflow-hidden">
-                          <div
-                            className="bg-primary h-full transition-all duration-500"
-                            style={{ width: `${cls.percentage}%` }}
-                          />
-                        </div>
-                        <span className="w-12 text-right font-mono text-xs">
-                          {cls.percentage}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <Button
-                    onClick={savePost}
-                    className="w-full py-6 text-lg font-semibold"
-                    data-testid="button-share"
-                  >
-                    <Check className="mr-2" /> Paylaş
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Footer Controls (Only when not captured) */}
-      {!capturedImage && (
-        <div className="absolute bottom-0 left-0 right-0 p-8 pb-12 flex items-center justify-around bg-gradient-to-t from-black/80 to-transparent">
+      {/* Settings Dropdown */}
+      {showSettings && !isEditing && (
+        <div className="absolute right-4 top-16 bg-card border border-border rounded-lg shadow-lg z-50 min-w-[200px]">
           <button
-            className="text-white p-4 rounded-full bg-white/10 backdrop-blur-md"
-            data-testid="button-gallery"
+            onClick={handleLogout}
+            className="w-full px-4 py-3 text-left hover:bg-secondary flex items-center gap-3 text-red-500"
           >
-            <ImageIcon size={24} />
-          </button>
-
-          <button
-            onClick={takePhoto}
-            disabled={modelLoading}
-            className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center relative group disabled:opacity-50"
-            data-testid="button-capture"
-          >
-            <div className="w-16 h-16 bg-white rounded-full transition-transform group-active:scale-90" />
-          </button>
-
-          <button
-            className="text-white p-4 rounded-full bg-white/10 backdrop-blur-md"
-            data-testid="button-flip"
-          >
-            <RotateCcw size={24} />
+            <LogOut size={18} />
+            Çıkış Yap
           </button>
         </div>
       )}
 
-      {/* Retake Button (When captured) */}
-      {capturedImage && !isAnalyzing && (
-        <button
-          onClick={reset}
-          className="absolute top-4 left-4 z-20 bg-black/50 text-white p-2 rounded-full backdrop-blur-md"
-          data-testid="button-retake"
-        >
-          <X size={24} />
-        </button>
-      )}
+      {/* Profile Info */}
+      <div className="p-4">
+        <div className="flex items-center gap-6 mb-4">
+          <div className="relative">
+            {currentAvatarUrl ? (
+              <div className="w-20 h-20 rounded-full bg-muted border border-border overflow-hidden">
+                <img
+                  src={currentAvatarUrl}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold border border-border">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            {isEditing && (
+              <>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white cursor-pointer"
+                >
+                  <Camera size={20} />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+              </>
+            )}
+          </div>
+          <div className="flex-1 flex justify-around text-center">
+            <div>
+              <div className="font-bold text-lg">{myPostsCount}</div>
+              <div className="text-xs text-muted-foreground">Gönderi</div>
+            </div>
+            <div>
+              <div className="font-bold text-lg">
+                {currentUser?.followers || 0}
+              </div>
+              <div className="text-xs text-muted-foreground">Takipçi</div>
+            </div>
+            <div>
+              <div className="font-bold text-lg">
+                {currentUser?.following || 0}
+              </div>
+              <div className="text-xs text-muted-foreground">Takip</div>
+            </div>
+          </div>
+        </div>
 
-      <canvas ref={canvasRef} className="hidden" />
+        <div className="mb-4">
+          {isEditing ? (
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Ad</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm"
+                  placeholder="Adınız"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">
+                  Biyografi
+                </label>
+                <textarea
+                  value={editForm.bio}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, bio: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm resize-none"
+                  placeholder="Kendiniz hakkında bir şeyler yazın..."
+                  rows={3}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <h2 className="font-bold">{displayName}</h2>
+              {(currentUser?.bio || editForm.bio) && (
+                <p className="text-sm text-muted-foreground">
+                  {currentUser?.bio || editForm.bio}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">{user.email}</p>
+            </>
+          )}
+        </div>
+
+        {!isEditing && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex-1 bg-secondary text-secondary-foreground font-semibold py-1.5 rounded-lg text-sm"
+            >
+              Profili Düzenle
+            </button>
+            <button className="flex-1 bg-secondary text-secondary-foreground font-semibold py-1.5 rounded-lg text-sm">
+              Profili Paylaş
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-t border-border mt-2">
+        <button
+          onClick={() => setActiveTab("posts")}
+          className={cn(
+            "flex-1 py-3 flex justify-center border-b-2 transition-colors",
+            activeTab === "posts"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground"
+          )}
+        >
+          <Grid size={24} />
+        </button>
+        <button
+          onClick={() => setActiveTab("saved")}
+          className={cn(
+            "flex-1 py-3 flex justify-center border-b-2 transition-colors",
+            activeTab === "saved"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground"
+          )}
+        >
+          <Bookmark size={24} />
+        </button>
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-3 gap-0.5">
+        {displayPosts.length > 0 ? (
+          displayPosts.map((post) => (
+            <div
+              key={post.id}
+              className="aspect-square relative group cursor-pointer bg-muted"
+            >
+              <img
+                src={post.imageUrl}
+                alt={post.aiResult.name}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          ))
+        ) : (
+          <div className="col-span-3 py-10 text-center text-muted-foreground">
+            <div className="flex justify-center mb-2">
+              {activeTab === "posts" ? (
+                <Camera size={48} className="opacity-20" />
+              ) : (
+                <Bookmark size={48} className="opacity-20" />
+              )}
+            </div>
+            <p>Henüz gönderi yok.</p>
+          </div>
+        )}
+      </div>
+
+      <BottomNav />
     </div>
   );
 }

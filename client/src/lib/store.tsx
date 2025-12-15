@@ -60,12 +60,63 @@ const INITIAL_POSTS: Post[] = [
   },
 ];
 
+// Load from localStorage
+const loadFromStorage = (key: string, defaultValue: any) => {
+  try {
+    const item = localStorage.getItem(key);
+    console.log(`Loading ${key}:`, item ? "found" : "not found");
+    return item ? JSON.parse(item) : defaultValue;
+  } catch (error) {
+    console.error(`Error loading ${key}:`, error);
+    return defaultValue;
+  }
+};
+
+// Save to localStorage
+const saveToStorage = (key: string, value: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    console.log(`Saved ${key} to localStorage`);
+  } catch (error) {
+    console.error(`Error saving ${key}:`, error);
+  }
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [posts, setPosts] = useState<Post[]>(INITIAL_POSTS);
-  const [savedPosts, setSavedPosts] = useState<string[]>(["1"]); // Mock saved post
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [posts, setPosts] = useState<Post[]>(() =>
+    loadFromStorage("geosnap_posts", INITIAL_POSTS)
+  );
+  const [savedPosts, setSavedPosts] = useState<string[]>(() =>
+    loadFromStorage("geosnap_saved", ["1"])
+  );
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() =>
+    loadFromStorage("geosnap_user", null)
+  );
+
+  // Persist posts to localStorage
+  useEffect(() => {
+    saveToStorage("geosnap_posts", posts);
+  }, [posts]);
+
+  // Persist savedPosts to localStorage
+  useEffect(() => {
+    saveToStorage("geosnap_saved", savedPosts);
+  }, [savedPosts]);
+
+  // Persist currentUser to localStorage
+  useEffect(() => {
+    if (currentUser) {
+      console.log("Saving currentUser to localStorage:", {
+        username: currentUser.username,
+        name: currentUser.name,
+        hasAvatar: !!currentUser.avatar,
+        avatarLength: currentUser.avatar?.length || 0,
+      });
+      saveToStorage("geosnap_user", currentUser);
+    }
+  }, [currentUser]);
 
   // Update posts when currentUser changes (update avatars for user's posts)
   useEffect(() => {
@@ -124,6 +175,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     bio: string;
     avatar: string;
   }) => {
+    console.log("updateUserProfile called with:", {
+      name: profile.name,
+      bio: profile.bio,
+      hasAvatar: !!profile.avatar,
+      avatarLength: profile.avatar?.length || 0,
+    });
+
     if (currentUser) {
       const updatedUser = {
         ...currentUser,
@@ -131,6 +189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         bio: profile.bio,
         avatar: profile.avatar,
       };
+      console.log("Setting updated user:", updatedUser);
       setCurrentUser(updatedUser);
 
       // Update all posts by this user with the new avatar
@@ -141,6 +200,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             : post
         )
       );
+    } else {
+      console.warn("No currentUser found, cannot update profile");
     }
   };
 

@@ -14,12 +14,19 @@ import {
   X,
   Check,
   LogOut,
+  UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Profile() {
-  const { posts, savedPosts, isSaved, currentUser, updateUserProfile } =
-    useApp();
+  const {
+    posts,
+    savedPosts,
+    isSaved,
+    currentUser,
+    updateUserProfile,
+    setCurrentUser,
+  } = useApp();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -29,20 +36,32 @@ export default function Profile() {
   const [editForm, setEditForm] = React.useState({
     name: user?.displayName || "",
     bio: currentUser?.bio || "",
-    avatar:
-      currentUser?.avatar || user?.photoURL || "https://github.com/shadcn.png",
+    avatar: currentUser?.avatar || user?.photoURL || "",
   });
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Initialize currentUser if it doesn't exist
+  React.useEffect(() => {
+    if (user && !currentUser) {
+      const username = user.email?.split("@")[0] || "kullanici";
+      console.log("Initializing currentUser for:", username);
+      setCurrentUser({
+        username: username,
+        name: user.displayName || username,
+        avatar: user.photoURL || "",
+        bio: "",
+        followers: 0,
+        following: 0,
+      });
+    }
+  }, [user, currentUser, setCurrentUser]);
 
   // Update form when user or currentUser changes
   React.useEffect(() => {
     setEditForm({
       name: user?.displayName || currentUser?.name || "",
       bio: currentUser?.bio || "",
-      avatar:
-        currentUser?.avatar ||
-        user?.photoURL ||
-        "https://github.com/shadcn.png",
+      avatar: currentUser?.avatar || user?.photoURL || "",
     });
   }, [user, currentUser]);
 
@@ -112,6 +131,11 @@ export default function Profile() {
 
   const handleSaveProfile = async () => {
     try {
+      console.log(
+        "Saving profile with avatar length:",
+        editForm.avatar?.length
+      );
+
       // Update Firebase profile (only display name, skip photoURL for base64)
       if (user) {
         await updateProfile(user, {
@@ -143,10 +167,7 @@ export default function Profile() {
     setEditForm({
       name: user?.displayName || currentUser?.name || "",
       bio: currentUser?.bio || "",
-      avatar:
-        currentUser?.avatar ||
-        user?.photoURL ||
-        "https://github.com/shadcn.png",
+      avatar: currentUser?.avatar || user?.photoURL || "",
     });
     setIsEditing(false);
   };
@@ -167,6 +188,39 @@ export default function Profile() {
       });
     }
   };
+
+  // Get current avatar URL - check all possible sources including editForm as fallback
+  const currentAvatarUrl = isEditing
+    ? editForm.avatar
+    : currentUser?.avatar || user?.photoURL || editForm.avatar || "";
+
+  // Debug log
+  React.useEffect(() => {
+    console.log("=== Avatar Debug ===");
+    console.log("isEditing:", isEditing);
+    console.log(
+      "editForm.avatar:",
+      editForm.avatar ? `${editForm.avatar.substring(0, 50)}...` : "empty"
+    );
+    console.log(
+      "currentUser?.avatar:",
+      currentUser?.avatar
+        ? `${currentUser.avatar.substring(0, 50)}...`
+        : "empty"
+    );
+    console.log("user?.photoURL:", user?.photoURL || "empty");
+    console.log(
+      "Final currentAvatarUrl:",
+      currentAvatarUrl ? `${currentAvatarUrl.substring(0, 50)}...` : "empty"
+    );
+    console.log("===================");
+  }, [
+    isEditing,
+    editForm.avatar,
+    currentUser?.avatar,
+    user?.photoURL,
+    currentAvatarUrl,
+  ]);
 
   return (
     <div className="bg-background min-h-screen pb-20">
@@ -211,22 +265,24 @@ export default function Profile() {
       <div className="p-4">
         <div className="flex items-center gap-6 mb-4">
           <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-muted border border-border p-1">
-              <img
-                src={
-                  isEditing
-                    ? editForm.avatar
-                    : currentUser?.avatar || user?.photoURL || editForm.avatar
-                }
-                alt="Profile"
-                className="w-full h-full rounded-full object-cover"
-              />
-            </div>
+            {currentAvatarUrl ? (
+              <div className="w-20 h-20 rounded-full bg-muted border border-border overflow-hidden">
+                <img
+                  src={currentAvatarUrl}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-muted border border-border flex items-center justify-center">
+                <UserRound size={40} className="text-muted-foreground" />
+              </div>
+            )}
             {isEditing && (
               <>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white"
+                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white cursor-pointer"
                 >
                   <Camera size={20} />
                 </button>

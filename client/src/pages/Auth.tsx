@@ -117,7 +117,7 @@ export default function Auth() {
             <Camera size={40} className="text-white" />
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            GeoSnap
+            AI destekli Coğrafi Şekil Tanıyıcı
           </h1>
           <p className="text-muted-foreground mt-2">
             Fotoğraflarınızı AI ile keşfedin
